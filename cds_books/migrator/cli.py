@@ -20,6 +20,12 @@ from invenio_records import Record
 from cds_books.migrator.records import CDSParentRecordDumpLoader
 
 
+def index_documents():
+    """Index all documents in the database."""
+    # TODO: implement
+    pass
+
+
 def bulk_index_records(records):
     """Bulk index a list of records."""
     indexer = RecordIndexer()
@@ -49,7 +55,7 @@ def import_parents_from_file(dump_file, rectype, include):
                 record = import_parent_record(parent, model, provider)
                 click.echo('Imported serial with PID "{}"...'.format(record["pid"]))
                 records.append(record)
-
+    # Index all new parent records
     bulk_index_records(records)
 
 
@@ -63,26 +69,26 @@ def import_parent_record(dump, model, pid_provider):
         raise
 
 
-def load_records(sources, source_type, eager, rectype):
+def import_records(sources, source_type, eager, recids):
     """Load records."""
+    recids = recids if recids is None else recids.split(',')
     for idx, source in enumerate(sources, 1):
         click.echo('Loading dump {0} of {1} ({2})'.format(
             idx, len(sources), source.name))
         data = json.load(source)
         with click.progressbar(data) as records:
             for item in records:
-                count = PersistentIdentifier.query.filter_by(
-                            pid_type='serid', pid_value=str(item['recid'])).count()
-                if count > 0:
-                    current_app.logger.warning(
-                        "migration: duplicate {0}".format(item['recid']))
-                else:
+                if recids is None or str(item['recid']) in recids:
                     try:
                         _loadrecord(item, source_type, eager=eager)
+                        click.echo('Imported record with legacy recid: {}'.format(
+                            item['recid']))
                     except PIDAlreadyExists:
                         current_app.logger.warning(
                             "migration: report number associated with multiple"
                             "recid. See {0}".format(item['recid']))
+    # We don't get the record back from _loadrecord so re-index all documents
+    index_documents()
 
 
 @dumps.command()
@@ -94,20 +100,15 @@ def load_records(sources, source_type, eager, rectype):
     default='json',
     help='Whether to use JSON or MARCXML.')
 @click.option(
-    '--recid',
+    '--recids',
     '-r',
-    help='Record ID to load (NOTE: will load only one record!).',
-    default=None)
-@click.option(
-    '--rectype',
-    '-x',
-    help='Type of record to load (f.e serial)',
+    help='Record ID(s) to load (NOTE: will load only those records).',
     default=None)
 @with_appcontext
-def load(sources, source_type, recid, rectype):
+def load(sources, source_type, recids):
     """Load records migration dump."""
-    load_records(sources=sources, source_type=source_type, eager=True,
-                 rectype=rectype)
+    import_records(sources=sources, source_type=source_type, eager=True,
+                   recids=recids)
 
 
 @dumps.command()

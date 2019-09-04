@@ -20,8 +20,12 @@ from cds_dojson.marc21.fields.books.errors import ManualMigrationRequired, \
     MissingRequiredField, UnexpectedValue
 from cds_dojson.marc21.utils import create_record
 from flask import current_app
+from invenio_db import db
 from invenio_migrator.records import RecordDump, RecordDumpLoader
 from invenio_migrator.utils import disable_timestamp
+from invenio_pidstore.errors import PIDDoesNotExistError
+from invenio_pidstore.models import PersistentIdentifier, PIDStatus, \
+    RecordIdentifier
 from invenio_records import Record
 
 from cds_books.migrator.errors import LossyConversion
@@ -178,7 +182,11 @@ class CDSParentRecordDumpLoader(RecordDumpLoader):
 
 
 class CDSRecordDumpLoader(RecordDumpLoader):
-    """Migrate a CDS record."""
+    """Migrate a CDS record.
+
+    create and create_record has been changed to change the hardcoded pid_type
+    recid to docid.
+    """
 
     @classmethod
     def create_files(cls, *args, **kwargs):
@@ -187,8 +195,66 @@ class CDSRecordDumpLoader(RecordDumpLoader):
 
     @classmethod
     def create(cls, dump):
-        """Update an existing record."""
-        record = super(CDSRecordDumpLoader, cls).create(dump=dump)
+        """Create record based on dump."""
+        # If 'record' is not present, just create the PID
+        if not dump.data.get('record'):
+            try:
+                PersistentIdentifier.get(pid_type='docid',
+                                         pid_value=dump.recid)
+            except PIDDoesNotExistError:
+                PersistentIdentifier.create(
+                    'docid', dump.recid,
+                    status=PIDStatus.RESERVED
+                )
+                db.session.commit()
+            return None
+
+        dump.prepare_revisions()
+        dump.prepare_pids()
+        dump.prepare_files()
+
+        # Create or update?
+        existing_files = []
+        if dump.record:
+            existing_files = dump.record.get('_files', [])
+            record = cls.update_record(revisions=dump.revisions,
+                                       created=dump.created,
+                                       record=dump.record)
+            pids = dump.missing_pids
+        else:
+            record = cls.create_record(dump)
+            pids = dump.pids
+
+        if pids:
+            cls.create_pids(record.id, pids)
+
+        if dump.files:
+            cls.create_files(record, dump.files, existing_files)
+
+        # Update files.
+        if dump.is_deleted(record):
+            cls.delete_record(record)
+
         return record
 
-
+    @classmethod
+    @disable_timestamp
+    def create_record(cls, dump):
+        """Create a new record from dump."""
+        # Reserve record identifier, create record and recid pid in one
+        # operation.
+        timestamp, data = dump.latest
+        record = Record.create(data)
+        record.model.created = dump.created.replace(tzinfo=None)
+        record.model.updated = timestamp.replace(tzinfo=None)
+        RecordIdentifier.insert(dump.recid)
+        PersistentIdentifier.create(
+            pid_type='docid',
+            pid_value=str(dump.recid),
+            object_type='rec',
+            object_uuid=str(record.id),
+            status=PIDStatus.REGISTERED
+        )
+        db.session.commit()
+        return cls.update_record(revisions=dump.rest, record=record,
+                                 created=dump.created)
