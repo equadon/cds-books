@@ -38,15 +38,17 @@ def model_provider_by_rectype(rectype):
         return Document, DocumentIdProvider
 
 
-def import_parents_from_file(dump_file, rectype, recid=None):
+def import_parents_from_file(dump_file, rectype, include):
     """Import parent records from file."""
     model, provider = model_provider_by_rectype(rectype)
-    with click.progressbar(json.load(dump_file).values()) as bar:
+    include_keys = None if include is None else include.split(',')
+    with click.progressbar(json.load(dump_file).items()) as bar:
         records = []
-        for parent in bar:
-            record = import_parent_record(parent, model, provider)
-            click.echo('Imported serial with PID "{}"...'.format(record["pid"]))
-            records.append(record)
+        for key, parent in bar:
+            if include_keys is None or key in include_keys:
+                record = import_parent_record(parent, model, provider)
+                click.echo('Imported serial with PID "{}"...'.format(record["pid"]))
+                records.append(record)
 
     bulk_index_records(records)
 
@@ -109,22 +111,15 @@ def load(sources, source_type, recid, rectype):
 
 
 @dumps.command()
+@click.argument('rectype', nargs=1, type=str)
 @click.argument('source', nargs=1, type=click.File())
 @click.option(
-    '--recid',
-    '-r',
-    help='Record ID to load (NOTE: will load only one record!).',
-    default=None)
-@click.option(
-    '--rectype',
-    '-x',
-    help='Type of record to load (f.e serial)',
+    '--include',
+    '-i',
+    help='Comma-separated list of legacy recids (for multiparts) or serial '
+         'titles to include in the import',
     default=None)
 @with_appcontext
-def loadparents(source, recid, rectype):
+def loadparents(rectype, source, include):
     """Load records migration dump."""
-    if source:
-        import_parents_from_file(source, rectype=rectype, recid=recid)
-    else:
-        click.secho('You have to provide source file', fg='red', bold=True,
-                    err=True)
+    import_parents_from_file(source, rectype=rectype, include=include)
