@@ -219,3 +219,5 @@ CDS_BOOKS_LDAP_URL = "ldap://xldap.cern.ch"
 MIGRATOR_RECORDS_DUMPLOADER_CLS = \
     'cds_books.migrator.records:CDSRecordDumpLoader'
 MIGRATOR_RECORDS_DUMP_CLS = 'cds_books.migrator.records:CDSRecordDump'
+
+JSONSCHEMAS_SCHEMAS = ['ils']
