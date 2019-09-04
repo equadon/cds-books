@@ -7,8 +7,11 @@ import re
 import click
 from flask import current_app
 from flask.cli import with_appcontext
-from invenio_app_ils.records.api import Series, Keyword
+from invenio_app_ils.records.api import Document, Series, Keyword
+from invenio_app_ils.pidstore.providers import DocumentIdProvider, \
+    SeriesIdProvider
 from invenio_db import db
+from invenio_indexer.api import RecordIndexer
 from invenio_migrator.cli import _loadrecord, dumps
 from invenio_pidstore.errors import PIDAlreadyExists
 from invenio_pidstore.models import PersistentIdentifier
@@ -17,33 +20,45 @@ from invenio_records import Record
 from cds_books.migrator.records import CDSParentRecordDumpLoader
 
 
-def load_dumps_from_dir(source_dir, rectype):
-    with click.progressbar(os.listdir(source_dir)) as bar:
-        for filename in bar:
-            click.echo('Loading dump {0}'.format(filename))
-            if re.match(r'^'+rectype+'_(\d+)(_\d+)*.json$', filename):
-                with open(source_dir+filename, 'r') as file:
-                    json_dump = json.load(file)
-                    import_parent_records(rectype, json_dump)
+def bulk_index_records(records):
+    """Bulk index a list of records."""
+    indexer = RecordIndexer()
+
+    click.echo('Bulk indexing {} records...'.format(len(records)))
+    indexer.bulk_index([str(r.id) for r in records])
+    indexer.process_bulk_queue()
+    click.echo('Indexing completed!')
 
 
-def import_parent_records(rectype, dump):
+def model_provider_by_rectype(rectype):
+    """Return the correct model and PID provider based on the rectype."""
+    if rectype in ('serial', 'multipart'):
+        return Series, SeriesIdProvider
+    elif rectype == 'document':
+        return Document, DocumentIdProvider
+
+
+def import_parents_from_file(dump_file, rectype, recid=None):
+    """Import parent records from file."""
+    model, provider = model_provider_by_rectype(rectype)
+    with click.progressbar(json.load(dump_file).values()) as bar:
+        records = []
+        for parent in bar:
+            record = import_parent_record(parent, model, provider)
+            click.echo('Imported serial with PID "{}"...'.format(record["pid"]))
+            records.append(record)
+
+    bulk_index_records(records)
+
+
+def import_parent_record(dump, model, pid_provider):
     try:
-        CDSParentRecordDumpLoader.create(
-            dump, model=identify_model(rectype))
+        record = CDSParentRecordDumpLoader.create(dump, model, pid_provider)
         db.session.commit()
+        return record
     except Exception:
         db.session.rollback()
         raise
-
-
-def identify_model(rectype):
-    if rectype == 'serial' or rectype == 'multipart':
-        return Series
-    elif rectype == 'keywords':
-        return Keyword
-    else:
-        return Record
 
 
 def load_records(sources, source_type, eager, rectype):
@@ -94,7 +109,7 @@ def load(sources, source_type, recid, rectype):
 
 
 @dumps.command()
-@click.argument('source', nargs=1, type=click.Path(exists=True))
+@click.argument('source', nargs=1, type=click.File())
 @click.option(
     '--recid',
     '-r',
@@ -109,7 +124,7 @@ def load(sources, source_type, recid, rectype):
 def loadparents(source, recid, rectype):
     """Load records migration dump."""
     if source:
-        load_dumps_from_dir(source, rectype=rectype)
+        import_parents_from_file(source, rectype=rectype, recid=recid)
     else:
-        click.secho('You have to provide source dir', fg='red', bold=True,
+        click.secho('You have to provide source file', fg='red', bold=True,
                     err=True)

@@ -154,23 +154,23 @@ class CDSParentRecordDump(RecordDump):
 class CDSParentRecordDumpLoader(RecordDumpLoader):
 
     @classmethod
-    def create(cls, dump, model=Record):
+    def create(cls, dump, model, pid_provider):
         """Create record based on dump."""
-        record = cls.create_record(dump, model)
+        record = cls.create_record(dump, model, pid_provider)
         return record
 
     @classmethod
     @disable_timestamp
-    def create_record(cls, dump, model=Record):
+    def create_record(cls, dump, model, pid_provider):
         """Create a new record from dump."""
         # Reserve record identifier, create record and recid pid in one
         # operation.
         record_uuid = uuid.uuid4()
-        provider = model._pid_provider.create(
+        provider = pid_provider.create(
             object_type='rec',
             object_uuid=record_uuid,
         )
-        dump[model.pid_field] = provider.pid.pid_value
+        dump['pid'] = provider.pid.pid_value
         record = model.create(dump, record_uuid)
         record.model.created = datetime.datetime.now()
         record.commit()
