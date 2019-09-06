@@ -62,7 +62,10 @@ def load_parents_from_file(dump_file, rectype, include):
         for key, parent in bar:
             if include_keys is None or key in include_keys:
                 record = load_parent_record(parent, model, provider)
-                click.echo('Loaded serial with PID "{}"...'.format(record["pid"]))
+                click.echo('Loaded {} with PID "{}"...'.format(
+                    rectype,
+                    record["pid"]
+                ))
                 records.append(record)
     # Index all new parent records
     bulk_index_records(records)
