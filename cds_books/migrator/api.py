@@ -8,8 +8,17 @@
 
 """CDS-Books migrator API."""
 
-from invenio_app_ils.search.api import DocumentSearch
+import uuid
+
+from invenio_app_ils.search.api import DocumentSearch, SeriesSearch
 from invenio_app_ils.records.api import Document
+from invenio_app_ils.pidstore.providers import DocumentIdProvider
+from invenio_db import db
+
+
+def get_multipart_by_legacy_recid(recid):
+    search = SeriesSearch()
+    return search.filter('term', legacy_recid=recid).execute()
 
 
 def create_multipart_volumes(pid, multipart_legacy_recid, migration_volumes):
@@ -32,19 +41,39 @@ def create_multipart_volumes(pid, multipart_legacy_recid, migration_volumes):
     first = Document.get_record_by_pid(pid)
     if 'title' in volumes[first_volume]:
         first['title']['title'] = volumes[first_volume]['title']
-    exit()
+    first.commit()
 
     # Create new records for the rest
+    records = [first]
+    for number in volume_numbers:
+        temp = first.copy()
+        temp['title']['title'] = volumes[number]['title']
+        record_uuid = uuid.uuid4()
+        provider = DocumentIdProvider.create(
+            object_type='rec',
+            object_uuid=record_uuid,
+        )
+        temp['pid'] = provider.pid.pid_value
+        record = Document.create(temp, record_uuid)
+        record.commit()
+        records.append(record)
+    return records
 
 
 def link_and_create_multipart_volumes(dry_run):
     """Link and create multipart volume records."""
-    search = DocumentSearch().filter('term', _migration__record_type='multipart')
+    search = DocumentSearch().filter('term', _migration__is_multipart=True)
 
     for hit in search.scan():
-        import ipdb; ipdb.set_trace()
-        create_multipart_volumes(
-            hit.pid,
-            hit.legacy_recid,
-            hit._migration.volumes
-        )
+        multipart = get_multipart_by_legacy_recid(hit.legacy_recid)
+        if multipart:
+            print('yay')
+            documents = create_multipart_volumes(
+                hit.pid,
+                hit.legacy_recid,
+                hit._migration.volumes
+            )
+        else:
+            print('Failed to fetch multipart with recid {}'.format(hit.legacy_recid))
+
+    db.session.commit()

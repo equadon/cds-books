@@ -91,16 +91,16 @@ def load_parent_record(dump, model, pid_provider):
         raise
 
 
-def load_records_from_dump(sources, source_type, eager, recids):
+def load_records_from_dump(sources, source_type, eager, include):
     """Load records."""
-    recids = recids if recids is None else recids.split(',')
+    include = include if include is None else include.split(',')
     for idx, source in enumerate(sources, 1):
         click.echo('Loading dump {0} of {1} ({2})'.format(
             idx, len(sources), source.name))
         data = json.load(source)
         with click.progressbar(data) as records:
             for item in records:
-                if recids is None or str(item['recid']) in recids:
+                if include is None or str(item['recid']) in include:
                     try:
                         _loadrecord(item, source_type, eager=eager)
                         click.echo('Loaded record with legacy recid: {}'.format(
@@ -121,23 +121,22 @@ def load_records_from_dump(sources, source_type, eager, recids):
     '--source-type',
     '-t',
     type=click.Choice(['json', 'marcxml']),
-    default='json',
+    default='marcxml',
     help='Whether to use JSON or MARCXML.')
 @click.option(
-    '--recids',
-    '-r',
-    help='Record ID(s) to load (NOTE: will load only those records).',
+    '--include',
+    '-i',
+    help='Comma-separated list of legacy recids to include in the import',
     default=None)
 @with_appcontext
-def documents(sources, source_type, recids):
+def documents(sources, source_type, include):
     """Migrate documents from CDS legacy."""
     load_records_from_dump(
         sources=sources,
         source_type=source_type,
         eager=True,
-        recids=recids
+        include=include
     )
-    db.session.commit()
 
 
 @migrate.command()
@@ -147,7 +146,7 @@ def documents(sources, source_type, recids):
     '--include',
     '-i',
     help='Comma-separated list of legacy recids (for multiparts) or serial '
-         'titles to include in the load',
+         'titles to include in the import',
     default=None)
 @with_appcontext
 def parents(rectype, source, include):
@@ -161,3 +160,4 @@ def parents(rectype, source, include):
 def link(dry_run):
     """Link and create new records."""
     link_and_create_multipart_volumes(dry_run)
+    reindex_documents()

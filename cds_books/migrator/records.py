@@ -215,46 +215,26 @@ class CDSRecordDumpLoader(RecordDumpLoader):
         dump.prepare_pids()
         dump.prepare_files()
 
-        # Create or update?
-        existing_files = []
-        if dump.record:
-            existing_files = dump.record.get('_files', [])
-            record = cls.update_record(revisions=dump.revisions,
-                                       created=dump.created,
-                                       record=dump.record)
-            pids = dump.missing_pids
-        else:
-            record = cls.create_record(dump)
-            pids = dump.pids
-
-        if pids:
-            cls.create_pids(record.id, pids)
-
-        if dump.files:
-            cls.create_files(record, dump.files, existing_files)
-
-        # Update files.
-        if dump.is_deleted(record):
-            cls.delete_record(record)
+        record = cls.create_record(dump)
 
         return record
 
-    # @classmethod
-    # @disable_timestamp
-    # def create_record(cls, dump):
-    #     """Create a new document from dump."""
-    #     record_uuid = uuid.uuid4()
-    #     import ipdb; ipdb.set_trace()
-    #     provider = DocumentIdProvider.create(
-    #         object_type='rec',
-    #         object_uuid=record_uuid,
-    #     )
-    #     # dump['pid'] = provider.pid.pid_value
-    #     record = Document.create(dump, record_uuid)
-    #     record['pid'] = provider.pid.pid_value
-    #     record.model.created = datetime.datetime.now()
-    #     record.commit()
-    #     return record
+    @staticmethod
+    def clean_json(data):
+        if 'edition' in data:
+            if len(data['edition']) == 1:
+                data['edition'] = data['edition'][0]
+            else:
+                raise Exception('Recieved multiple editions')
+        # Temporary clean imprints so we can run the linker
+        for imprint in data['imprints']:
+            if 'reprint' in imprint:
+                del imprint['reprint']
+        if 'authors' in data:
+            for author in data['authors']:
+                if 'affiliations' in author:
+                    del author['affiliations']
+        return data
 
     @classmethod
     @disable_timestamp
@@ -264,29 +244,19 @@ class CDSRecordDumpLoader(RecordDumpLoader):
         # operation.
         timestamp, data = dump.latest
         record = Record.create(data)
-        # record.model.created = dump.created.replace(tzinfo=None)
-        # record.model.updated = timestamp.replace(tzinfo=None)
-        # record.model.json = dump.rest[-1]
-        # RecordIdentifier.insert(dump.recid)
-        # PersistentIdentifier.create(
-        #     pid_type='docid',
-        #     pid_value=str(dump.recid),
-        #     object_type='rec',
-        #     object_uuid=str(record.id),
-        #     status=PIDStatus.REGISTERED
-        # )
         record_uuid = uuid.uuid4()
         provider = DocumentIdProvider.create(
             object_type='rec',
             object_uuid=record_uuid,
         )
-        timestamp, json = dump.rest[-1]
-        json['pid'] = provider.pid.pid_value
-        record.model.json = json
+        timestamp, json_data = dump.rest[-1]
+        json_data['pid'] = provider.pid.pid_value
+        record.model.json = json_data
         record.model.created = dump.created.replace(tzinfo=None)
         record.model.updated = timestamp.replace(tzinfo=None)
-        # return Record(record.model.json, model=record.model)
-        document = Document.create(record.model.json)
+        cleaned_json = cls.clean_json(record.model.json)
+        document = Document.create(cleaned_json, record_uuid)
         document.commit()
+        db.session.commit()
 
         return document
