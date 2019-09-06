@@ -31,18 +31,18 @@ def migrate():
     """CDS Books migrator commands."""
 
 
-def reindex_documents():
-    """Reindex all documents."""
-    click.echo('Indexing all documents...')
+def reindex_pidtype(pid_type):
+    """Reindex records with the specified pid_type."""
+    click.echo('Indexing pid type "{}"...'.format(pid_type))
     cli = create_cli()
     runner = current_app.test_cli_runner()
     runner.invoke(
         cli,
-        'index reindex --pid-type docid --yes-i-know',
+        'index reindex --pid-type {} --yes-i-know'.format(pid_type),
         catch_exceptions=True
     )
     runner.invoke(cli, 'index run', catch_exceptions=False)
-    click.echo('All documents successfully indexed!')
+    click.echo('Indexing completed!')
 
 
 def bulk_index_records(records):
@@ -112,7 +112,7 @@ def load_records_from_dump(sources, source_type, eager, include):
                     except LossyConversion:
                         pass
     # We don't get the record back from _loadrecord so re-index all documents
-    reindex_documents()
+    reindex_pidtype('docid')
 
 
 @migrate.command()
@@ -163,4 +163,5 @@ def relations(dry_run):
     if dry_run:
         click.echo('No changes were made. Disable dry-run to update the database.')
     else:
-        reindex_documents()
+        reindex_pidtype('docid')
+        reindex_pidtype('serid')
