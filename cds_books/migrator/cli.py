@@ -3,11 +3,13 @@ from __future__ import absolute_import, print_function
 import json
 import os
 import re
+import sqlalchemy
 
 import click
 from flask import current_app
 from flask.cli import with_appcontext
 from invenio_app_ils.records.api import Document, Series, Keyword
+from invenio_app_ils.search.api import DocumentSearch
 from invenio_app_ils.pidstore.providers import DocumentIdProvider, \
     SeriesIdProvider
 from invenio_base.app import create_cli
@@ -17,8 +19,16 @@ from invenio_migrator.cli import _loadrecord, dumps
 from invenio_pidstore.errors import PIDAlreadyExists
 from invenio_pidstore.models import PersistentIdentifier
 from invenio_records import Record
+from invenio_records.models import RecordMetadata
 
+from cds_books.migrator.api import link_and_create_multipart_volumes
+from cds_books.migrator.errors import LossyConversion
 from cds_books.migrator.records import CDSParentRecordDumpLoader
+
+
+@click.group()
+def migrate():
+    """CDS Books migrator commands."""
 
 
 def reindex_documents():
@@ -99,11 +109,13 @@ def load_records_from_dump(sources, source_type, eager, recids):
                         current_app.logger.warning(
                             "migration: report number associated with multiple"
                             "recid. See {0}".format(item['recid']))
+                    except LossyConversion:
+                        pass
     # We don't get the record back from _loadrecord so re-index all documents
     reindex_documents()
 
 
-@dumps.command()
+@migrate.command()
 @click.argument('sources', type=click.File('r'), nargs=-1)
 @click.option(
     '--source-type',
@@ -117,17 +129,18 @@ def load_records_from_dump(sources, source_type, eager, recids):
     help='Record ID(s) to load (NOTE: will load only those records).',
     default=None)
 @with_appcontext
-def load(sources, source_type, recids):
-    """Load records migration dump."""
+def documents(sources, source_type, recids):
+    """Migrate documents from CDS legacy."""
     load_records_from_dump(
         sources=sources,
         source_type=source_type,
         eager=True,
         recids=recids
     )
+    db.session.commit()
 
 
-@dumps.command()
+@migrate.command()
 @click.argument('rectype', nargs=1, type=str)
 @click.argument('source', nargs=1, type=click.File())
 @click.option(
@@ -137,6 +150,14 @@ def load(sources, source_type, recids):
          'titles to include in the load',
     default=None)
 @with_appcontext
-def loadparents(rectype, source, include):
-    """Load records migration dump."""
+def parents(rectype, source, include):
+    """Migrate parents (serials, multiparts or keywords) from dumps."""
     load_parents_from_file(source, rectype=rectype, include=include)
+
+
+@migrate.command()
+@click.option('--dry-run', is_flag=True)
+@with_appcontext
+def link(dry_run):
+    """Link and create new records."""
+    link_and_create_multipart_volumes(dry_run)

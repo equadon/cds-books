@@ -41,8 +41,7 @@ setup(
         ],
         "flask.commands": [
             "ldap-users = cds_books.ldap.cli:ldap_users",
-            'load = cds_books.migrator.cli:load',
-            'loadparents = cds_books.migrator.cli:loadparents',
+            'migrate = cds_books.migrator.cli:migrate',
         ],
         'invenio_base.apps': [
         ],

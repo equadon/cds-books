@@ -20,6 +20,8 @@ from cds_dojson.marc21.fields.books.errors import ManualMigrationRequired, \
     MissingRequiredField, UnexpectedValue
 from cds_dojson.marc21.utils import create_record
 from flask import current_app
+from invenio_app_ils.records.api import Document
+from invenio_app_ils.pidstore.providers import DocumentIdProvider
 from invenio_db import db
 from invenio_migrator.records import RecordDump, RecordDumpLoader
 from invenio_migrator.utils import disable_timestamp
@@ -237,6 +239,23 @@ class CDSRecordDumpLoader(RecordDumpLoader):
 
         return record
 
+    # @classmethod
+    # @disable_timestamp
+    # def create_record(cls, dump):
+    #     """Create a new document from dump."""
+    #     record_uuid = uuid.uuid4()
+    #     import ipdb; ipdb.set_trace()
+    #     provider = DocumentIdProvider.create(
+    #         object_type='rec',
+    #         object_uuid=record_uuid,
+    #     )
+    #     # dump['pid'] = provider.pid.pid_value
+    #     record = Document.create(dump, record_uuid)
+    #     record['pid'] = provider.pid.pid_value
+    #     record.model.created = datetime.datetime.now()
+    #     record.commit()
+    #     return record
+
     @classmethod
     @disable_timestamp
     def create_record(cls, dump):
@@ -245,16 +264,29 @@ class CDSRecordDumpLoader(RecordDumpLoader):
         # operation.
         timestamp, data = dump.latest
         record = Record.create(data)
+        # record.model.created = dump.created.replace(tzinfo=None)
+        # record.model.updated = timestamp.replace(tzinfo=None)
+        # record.model.json = dump.rest[-1]
+        # RecordIdentifier.insert(dump.recid)
+        # PersistentIdentifier.create(
+        #     pid_type='docid',
+        #     pid_value=str(dump.recid),
+        #     object_type='rec',
+        #     object_uuid=str(record.id),
+        #     status=PIDStatus.REGISTERED
+        # )
+        record_uuid = uuid.uuid4()
+        provider = DocumentIdProvider.create(
+            object_type='rec',
+            object_uuid=record_uuid,
+        )
+        timestamp, json = dump.rest[-1]
+        json['pid'] = provider.pid.pid_value
+        record.model.json = json
         record.model.created = dump.created.replace(tzinfo=None)
         record.model.updated = timestamp.replace(tzinfo=None)
-        RecordIdentifier.insert(dump.recid)
-        PersistentIdentifier.create(
-            pid_type='docid',
-            pid_value=str(dump.recid),
-            object_type='rec',
-            object_uuid=str(record.id),
-            status=PIDStatus.REGISTERED
-        )
-        db.session.commit()
-        return cls.update_record(revisions=dump.rest, record=record,
-                                 created=dump.created)
+        # return Record(record.model.json, model=record.model)
+        document = Document.create(record.model.json)
+        document.commit()
+
+        return document
