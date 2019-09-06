@@ -157,7 +157,10 @@ def parents(rectype, source, include):
 @migrate.command()
 @click.option('--dry-run', is_flag=True)
 @with_appcontext
-def link(dry_run):
-    """Link and create new records."""
+def relations(dry_run):
+    """Setup relations."""
     link_and_create_multipart_volumes(dry_run)
-    reindex_documents()
+    if dry_run:
+        click.echo('No changes were made. Disable dry-run to update the database.')
+    else:
+        reindex_documents()
