@@ -234,6 +234,14 @@ class CDSRecordDumpLoader(RecordDumpLoader):
             for author in data['authors']:
                 if 'affiliations' in author:
                     del author['affiliations']
+                if 'curated_relation' in author:
+                    del author['curated_relation']
+                if 'ids' in author:
+                    del author['ids']
+        if 'abstracts' in data and len(data['abstracts']) > 0:
+            data['abstracts'] = [data['abstracts'][0]]
+        if 'publication_info' in data:
+            del data['publication_info']
         return data
 
     @classmethod
