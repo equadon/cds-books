@@ -8,19 +8,17 @@
 
 """CDS-Books migrator API."""
 
-import click
 import json
 import uuid
 
+import click
 from elasticsearch_dsl import Q
 from flask import current_app
-
-from invenio_app_ils.search.api import DocumentSearch, SeriesSearch
-from invenio_app_ils.records.api import Document, Series, Keyword
-from invenio_app_ils.records_relations.api import RecordRelationsParentChild
-from invenio_app_ils.search.api import DocumentSearch
 from invenio_app_ils.pidstore.providers import DocumentIdProvider, \
     KeywordIdProvider, SeriesIdProvider
+from invenio_app_ils.records.api import Document, Keyword, Series
+from invenio_app_ils.records_relations.api import RecordRelationsParentChild
+from invenio_app_ils.search.api import DocumentSearch, SeriesSearch
 from invenio_base.app import create_cli
 from invenio_db import db
 from invenio_indexer.api import RecordIndexer
@@ -30,7 +28,8 @@ from invenio_pidstore.models import PersistentIdentifier
 from invenio_records import Record
 from invenio_records.models import RecordMetadata
 
-from cds_books.migrator.errors import LossyConversion, MigrationRecordSearchError
+from cds_books.migrator.errors import LossyConversion, \
+    MigrationRecordSearchError
 from cds_books.migrator.records import CDSParentRecordDumpLoader
 
 
@@ -91,6 +90,7 @@ def import_parents_from_file(dump_file, rectype, include):
 
 
 def import_parent_record(dump, model, pid_provider):
+    """Import parent record in database."""
     try:
         record = CDSParentRecordDumpLoader.create(dump, model, pid_provider)
         db.session.commit()
@@ -124,6 +124,7 @@ def import_records_from_dump(sources, source_type, eager, include):
 
 
 def get_multipart_by_legacy_recid(recid):
+    """Search multiparts by its legacy recid."""
     search = SeriesSearch().query(
         'bool',
         filter=[

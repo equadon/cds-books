@@ -1,11 +1,22 @@
+# -*- coding: utf-8 -*-
+#
+# This file is part of Invenio.
+# Copyright (C) 2019 CERN.
+#
+# cds-books is free software; you can redistribute it and/or modify it
+# under the terms of the MIT License; see LICENSE file for more details.
+
+"""CDS-Books migrator CLI."""
+
+
 from __future__ import absolute_import, print_function
 
 import json
 import os
 import re
-import sqlalchemy
 
 import click
+import sqlalchemy
 from flask import current_app
 from flask.cli import with_appcontext
 
@@ -55,7 +66,7 @@ def documents(sources, source_type, include):
     default=None)
 @with_appcontext
 def parents(rectype, source, include):
-    """Migrate parents (serials, multiparts or keywords) from dumps."""
+    """Migrate parents serials, multiparts or keywords from dumps."""
     click.echo('Migrating {}s...'.format(rectype))
     import_parents_from_file(source, rectype=rectype, include=include)
 

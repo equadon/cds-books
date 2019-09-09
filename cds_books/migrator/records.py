@@ -20,8 +20,8 @@ from cds_dojson.marc21.fields.books.errors import ManualMigrationRequired, \
     MissingRequiredField, UnexpectedValue
 from cds_dojson.marc21.utils import create_record
 from flask import current_app
-from invenio_app_ils.records.api import Document
 from invenio_app_ils.pidstore.providers import DocumentIdProvider
+from invenio_app_ils.records.api import Document
 from invenio_db import db
 from invenio_migrator.records import RecordDump, RecordDumpLoader
 from invenio_migrator.utils import disable_timestamp
@@ -143,6 +143,7 @@ class CDSRecordDump(RecordDump):
 
 
 class CDSParentRecordDump(RecordDump):
+    """Dump CDS parent record."""
 
     def _prepare_revision(self, data):
         """Prepare data."""
@@ -154,10 +155,12 @@ class CDSParentRecordDump(RecordDump):
         return dt, val
 
     def prepare_revisions(self):
+        """Prepare record revisions for migration."""
         self.revisions = [self.data]
 
 
 class CDSParentRecordDumpLoader(RecordDumpLoader):
+    """Migrate a CDS parent records."""
 
     @classmethod
     def create(cls, dump, model, pid_provider):
