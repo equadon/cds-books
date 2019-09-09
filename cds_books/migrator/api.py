@@ -20,7 +20,7 @@ from invenio_app_ils.records.api import Document, Series, Keyword
 from invenio_app_ils.records_relations.api import RecordRelationsParentChild
 from invenio_app_ils.search.api import DocumentSearch
 from invenio_app_ils.pidstore.providers import DocumentIdProvider, \
-    SeriesIdProvider
+    KeywordIdProvider, SeriesIdProvider
 from invenio_base.app import create_cli
 from invenio_db import db
 from invenio_indexer.api import RecordIndexer
@@ -30,7 +30,7 @@ from invenio_pidstore.models import PersistentIdentifier
 from invenio_records import Record
 from invenio_records.models import RecordMetadata
 
-from cds_books.migrator.errors import LossyConversion
+from cds_books.migrator.errors import LossyConversion, MigrationRecordSearchError
 from cds_books.migrator.records import CDSParentRecordDumpLoader
 
 
@@ -64,22 +64,28 @@ def model_provider_by_rectype(rectype):
         return Series, SeriesIdProvider
     elif rectype == 'document':
         return Document, DocumentIdProvider
+    elif rectype == 'keyword':
+        return Keyword, KeywordIdProvider
+    else:
+        raise ValueError('Unknown rectype: {}'.format(rectype))
 
 
 def import_parents_from_file(dump_file, rectype, include):
     """Load parent records from file."""
     model, provider = model_provider_by_rectype(rectype)
     include_keys = None if include is None else include.split(',')
+    imported = set()
     with click.progressbar(json.load(dump_file).items()) as bar:
         records = []
         for key, parent in bar:
             if include_keys is None or key in include_keys:
                 record = import_parent_record(parent, model, provider)
-                click.echo('Loaded {} with PID "{}"...'.format(
-                    rectype,
-                    record["pid"]
-                ))
                 records.append(record)
+                if key in imported:
+                    raise Exception(
+                        'already migrated {} "{}"'.format(rectype, key))
+                else:
+                    imported.add(key)
     # Index all new parent records
     bulk_index_records(records)
 
@@ -98,7 +104,7 @@ def import_records_from_dump(sources, source_type, eager, include):
     """Load records."""
     include = include if include is None else include.split(',')
     for idx, source in enumerate(sources, 1):
-        click.echo('Loading dump {0} of {1} ({2})'.format(
+        click.echo('({}/{}) Migrating documents in {}...'.format(
             idx, len(sources), source.name))
         data = json.load(source)
         with click.progressbar(data) as records:
@@ -106,8 +112,6 @@ def import_records_from_dump(sources, source_type, eager, include):
                 if include is None or str(item['recid']) in include:
                     try:
                         _loadrecord(item, source_type, eager=eager)
-                        click.echo('Loaded record with legacy recid: {}'.format(
-                            item['recid']))
                     except PIDAlreadyExists:
                         current_app.logger.warning(
                             "migration: report number associated with multiple"
@@ -120,14 +124,22 @@ def import_records_from_dump(sources, source_type, eager, include):
 
 
 def get_multipart_by_legacy_recid(recid):
-    search = SeriesSearch()
-    result = search.filter('term', legacy_recid=recid).execute()
-    if not result:
-        raise Exception('no multipart with legacy recid {}'.format(recid))
-    if result.hits.total == 1:
-        return Series.get_record_by_pid(result.hits[0].pid)
+    search = SeriesSearch().query(
+        'bool',
+        filter=[
+            Q('term', mode_of_issuance='MULTIPART_MONOGRAPH'),
+            Q('term', legacy_recid=recid),
+        ]
+    )
+    result = search.execute()
+    if result.hits.total < 1:
+        raise MigrationRecordSearchError(
+            'no multipart found with legacy recid {}'.format(recid))
+    elif result.hits.total > 1:
+        raise MigrationRecordSearchError(
+            'found more than one multipart with recid {}'.format(recid))
     else:
-        raise Exception('multiple hits for multipart legacy recid {}'.format(recid))
+        return Series.get_record_by_pid(result.hits[0].pid)
 
 
 def create_multipart_volumes(pid, multipart_legacy_recid, migration_volumes):
@@ -151,6 +163,9 @@ def create_multipart_volumes(pid, multipart_legacy_recid, migration_volumes):
     if 'title' in volumes[first_volume]:
         first['title']['title'] = volumes[first_volume]['title']
         first['volume'] = first_volume
+    first['_migration']['multipart_legacy_recid'] = multipart_legacy_recid
+    if 'legacy_recid' in first:
+        del first['legacy_recid']
     first.commit()
     yield first
 
@@ -177,7 +192,7 @@ def create_parent_child_relation(parent, child, relation_type, volume):
         parent=parent,
         child=child,
         relation_type=relation_type,
-        volume=volume
+        volume=str(volume) if volume else None
     )
 
 
@@ -193,12 +208,13 @@ def link_and_create_multipart_volumes(dry_run):
             hit._migration.volumes
         )
         for document in documents:
-            create_parent_child_relation(
-                multipart,
-                document,
-                current_app.config['MULTIPART_MONOGRAPH_RELATION'],
-                document['volume']
-            )
+            if document and multipart:
+                create_parent_child_relation(
+                    multipart,
+                    document,
+                    current_app.config['MULTIPART_MONOGRAPH_RELATION'],
+                    document['volume']
+                )
 
     if not dry_run:
         db.session.commit()
@@ -214,26 +230,54 @@ def get_serial_by_title(title):
         ]
     )
     results = search.execute()
-    if results.hits.total == 1:
+    if results.hits.total < 1:
+        raise MigrationRecordSearchError(
+            'no serial found with title "{}"'.format(title))
+    elif results.hits.total > 1:
+        raise MigrationRecordSearchError(
+            'found more than one serial with title "{}"'.format(title))
+    else:
         return Series.get_record_by_pid(results.hits[0].pid)
-    raise Exception(
-        'Found 0 or more than 1 serial with title "{}"'.format(title))
 
 
 def link_documents_and_serials(dry_run):
-    """Link documents and serials."""
-    search = DocumentSearch().filter('term', _migration__has_serial=True)
+    """Link documents/multiparts and serials."""
+    def link_records_and_serial(record_cls, search):
+        for hit in search.scan():
+            record = record_cls.get_record_by_pid(hit.pid)
+            for obj in hit._migration.serials:
+                serial = get_serial_by_title(obj['title'])
+                if record and serial:
+                    create_parent_child_relation(
+                        serial,
+                        record,
+                        current_app.config['SERIAL_RELATION'],
+                        obj['volume']
+                    )
 
-    for hit in search.scan():
-        document = Document.get_record_by_pid(hit.pid)
-        for obj in hit._migration.serials:
-            serial = get_serial_by_title(obj['title'])
-            create_parent_child_relation(
-                serial,
-                document,
-                current_app.config['SERIAL_RELATION'],
-                obj['volume']
-            )
+    link_records_and_serial(
+        Document,
+        DocumentSearch().filter('term', _migration__has_serial=True)
+    )
+    link_records_and_serial(
+        Series,
+        SeriesSearch().filter('bool', filter=[
+            Q('term', mode_of_issuance='MULTIPART_MONOGRAPH'),
+            Q('term', _migration__has_serial=True),
+        ])
+    )
 
     if not dry_run:
         db.session.commit()
+
+
+def validate_serials():
+    """Validate that serials were migrated successfully.
+
+    Performs the following checks:
+    * Find duplicate serials
+    * Ensure all children of migrated serials were migrated
+    """
+    search = SeriesSearch().filter('term', mode_of_issuance='SERIAL')
+    for serial_hit in search.scan():
+        pass

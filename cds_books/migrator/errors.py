@@ -19,3 +19,11 @@ class LossyConversion(DoJSONException):
         self.missing = kwargs.pop('missing', None)
         self.message = 'Lossy conversion: {0}'.format(self.missing or '')
         super(LossyConversion, self).__init__(*args, **kwargs)
+
+
+class CDSBooksMigrationException(Exception):
+    """Base exception for CDS Books migration errors."""
+
+
+class MigrationRecordSearchError(CDSBooksMigrationException):
+    """Raised when an issue searching for a record happens."""

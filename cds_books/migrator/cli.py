@@ -12,7 +12,7 @@ from flask.cli import with_appcontext
 from cds_books.migrator.api import import_parent_record, \
     import_parents_from_file, import_records_from_dump, \
     link_and_create_multipart_volumes, link_documents_and_serials, \
-    reindex_pidtype
+    reindex_pidtype, validate_serials
 
 
 @click.group()
@@ -56,6 +56,7 @@ def documents(sources, source_type, include):
 @with_appcontext
 def parents(rectype, source, include):
     """Migrate parents (serials, multiparts or keywords) from dumps."""
+    click.echo('Migrating {}s...'.format(rectype))
     import_parents_from_file(source, rectype=rectype, include=include)
 
 
@@ -72,3 +73,15 @@ def relations(dry_run):
     else:
         reindex_pidtype('docid')
         reindex_pidtype('serid')
+
+
+@migrate.group()
+def check():
+    """Check if there are any issues with the migration."""
+
+
+@check.command(name='serials')
+@with_appcontext
+def check_serials():
+    """Check migrated serials for errors."""
+    validate_serials()
