@@ -12,6 +12,7 @@ import click
 import json
 import uuid
 
+from elasticsearch_dsl import Q
 from flask import current_app
 
 from invenio_app_ils.search.api import DocumentSearch, SeriesSearch
@@ -196,7 +197,42 @@ def link_and_create_multipart_volumes(dry_run):
                 multipart,
                 document,
                 current_app.config['MULTIPART_MONOGRAPH_RELATION'],
-                str(document['volume'])
+                document['volume']
+            )
+
+    if not dry_run:
+        db.session.commit()
+
+
+def get_serial_by_title(title):
+    """Get serial record by title."""
+    search = SeriesSearch().query(
+        'bool',
+        filter=[
+            Q('term', mode_of_issuance='SERIAL'),
+            Q('term', title__title=title),
+        ]
+    )
+    results = search.execute()
+    if results.hits.total == 1:
+        return Series.get_record_by_pid(results.hits[0].pid)
+    raise Exception(
+        'Found 0 or more than 1 serial with title "{}"'.format(title))
+
+
+def link_and_create_serials(dry_run):
+    """Link and create serial records."""
+    search = DocumentSearch().filter('term', _migration__has_serial=True)
+
+    for hit in search.scan():
+        document = Document.get_record_by_pid(hit.pid)
+        for obj in hit._migration.serials:
+            serial = get_serial_by_title(obj['title'])
+            create_parent_child_relation(
+                serial,
+                document,
+                current_app.config['SERIAL_RELATION'],
+                obj['volume']
             )
 
     if not dry_run:
