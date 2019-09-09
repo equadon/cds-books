@@ -219,31 +219,6 @@ class CDSRecordDumpLoader(RecordDumpLoader):
 
         return record
 
-    @staticmethod
-    def clean_json(data):
-        if 'edition' in data:
-            if len(data['edition']) == 1:
-                data['edition'] = data['edition'][0]
-            else:
-                raise Exception('Recieved multiple editions')
-        # Temporary clean imprints so we can run the linker
-        for imprint in data['imprints']:
-            if 'reprint' in imprint:
-                del imprint['reprint']
-        if 'authors' in data:
-            for author in data['authors']:
-                if 'affiliations' in author:
-                    del author['affiliations']
-                if 'curated_relation' in author:
-                    del author['curated_relation']
-                if 'ids' in author:
-                    del author['ids']
-        if 'abstracts' in data and len(data['abstracts']) > 0:
-            data['abstracts'] = [data['abstracts'][0]]
-        if 'publication_info' in data:
-            del data['publication_info']
-        return data
-
     @classmethod
     @disable_timestamp
     def create_record(cls, dump):
@@ -262,8 +237,7 @@ class CDSRecordDumpLoader(RecordDumpLoader):
         record.model.json = json_data
         record.model.created = dump.created.replace(tzinfo=None)
         record.model.updated = timestamp.replace(tzinfo=None)
-        cleaned_json = cls.clean_json(record.model.json)
-        document = Document.create(cleaned_json, record_uuid)
+        document = Document.create(record.model.json, record_uuid)
         document.commit()
         db.session.commit()
 
