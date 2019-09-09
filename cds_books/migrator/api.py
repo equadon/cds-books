@@ -220,8 +220,8 @@ def get_serial_by_title(title):
         'Found 0 or more than 1 serial with title "{}"'.format(title))
 
 
-def link_and_create_serials(dry_run):
-    """Link and create serial records."""
+def link_documents_and_serials(dry_run):
+    """Link documents and serials."""
     search = DocumentSearch().filter('term', _migration__has_serial=True)
 
     for hit in search.scan():

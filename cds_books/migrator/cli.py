@@ -11,7 +11,7 @@ from flask.cli import with_appcontext
 
 from cds_books.migrator.api import import_parent_record, \
     import_parents_from_file, import_records_from_dump, \
-    link_and_create_multipart_volumes, link_and_create_serials, \
+    link_and_create_multipart_volumes, link_documents_and_serials, \
     reindex_pidtype
 
 
@@ -65,7 +65,7 @@ def parents(rectype, source, include):
 def relations(dry_run):
     """Setup relations."""
     link_and_create_multipart_volumes(dry_run)
-    link_and_create_serials(dry_run)
+    link_documents_and_serials(dry_run)
 
     if dry_run:
         click.echo('No changes were made. Disable dry-run to update the database.')
