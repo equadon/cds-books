@@ -80,7 +80,8 @@ def relations(dry_run):
     link_documents_and_serials(dry_run)
 
     if dry_run:
-        click.echo('No changes were made. Disable dry-run to update the database.')
+        click.echo('No changes were made. '
+                   'Disable dry-run to update the database.')
     else:
         reindex_pidtype('docid')
         reindex_pidtype('serid')

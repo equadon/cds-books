@@ -122,7 +122,6 @@ def import_records_from_dump(sources, source_type, eager, include):
     reindex_pidtype('docid')
 
 
-
 def get_multipart_by_legacy_recid(recid):
     """Search multiparts by its legacy recid."""
     search = SeriesSearch().query(
