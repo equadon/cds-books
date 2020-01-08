@@ -90,7 +90,7 @@ services:
       file: docker-services.yml
       service: app
     restart: "always"
-    command: ["celery worker -A invenio_app.celery --loglevel=INFO"]
+    command: ["celery worker --beat -A invenio_app.celery --loglevel=INFO"]
     image: cds-books
     links:
       - cache
