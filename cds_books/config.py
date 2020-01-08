@@ -142,6 +142,16 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'invenio_accounts.tasks.clean_session_table',
         'schedule': timedelta(minutes=60),
     },
+    "stats-process-events": {
+        'task': 'invenio_stats.tasks.process_events',
+        'schedule': timedelta(minutes=30),
+        'args': [('record-view', 'file-download')],
+    },
+    "stats-aggregate-events": {
+        'task': 'invenio_stats.tasks.aggregate_events',
+        'schedule': timedelta(hours=3),
+        'args': [('record-view-agg', 'file-download-agg')],
+    },
 }
 
 # Database
@@ -237,4 +247,11 @@ MIGRATOR_RECORDS_DUMPLOADER_CLS = \
     'cds_books.migrator.records:CDSDocumentDumpLoader'
 MIGRATOR_RECORDS_DUMP_CLS = 'cds_books.migrator.records:CDSRecordDump'
 
-JSONSCHEMAS_SCHEMAS = ['ils_schemas', 'loans']
+JSONSCHEMAS_SCHEMAS = [
+    'records_files',
+    'invenio_opendefinition',
+    'loans',
+    'acquisition_schemas',
+    'ill_schemas',
+    'ils_schemas',
+]

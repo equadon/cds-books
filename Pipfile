@@ -20,6 +20,7 @@ cds-dojson = {editable = true,git = "https://github.com/CERNDocumentServer/cds-d
 fuzzywuzzy = "*"
 python-ldap = "*"
 lorem = "*"
+webargs = ">=5.5.2,<6.0"
 
 [dev-packages]
 Flask-Debugtoolbar = ">=0.10.1"

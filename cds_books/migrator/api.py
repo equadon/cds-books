@@ -16,8 +16,8 @@ import click
 from elasticsearch_dsl import Q
 from flask import current_app
 from invenio_app_ils.pidstore.providers import DocumentIdProvider, \
-    SeriesIdProvider, TagIdProvider
-from invenio_app_ils.records.api import Document, Series, Tag
+    SeriesIdProvider
+from invenio_app_ils.records.api import Document, Series
 from invenio_app_ils.records_relations.api import RecordRelationsParentChild
 from invenio_app_ils.search.api import DocumentSearch, SeriesSearch
 from invenio_base.app import create_cli
@@ -76,8 +76,6 @@ def model_provider_by_rectype(rectype):
         return Series, SeriesIdProvider
     elif rectype == 'document':
         return Document, DocumentIdProvider
-    elif rectype == 'tag':
-        return Tag, TagIdProvider
     else:
         raise ValueError('Unknown rectype: {}'.format(rectype))
 
